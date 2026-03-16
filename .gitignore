@@ -1,0 +1,93 @@
+# 🚫 Git Ignore 文件 - Dungeon Extraction
+
+## 📦 IDE/编辑器配置
+.idea/
+.vscode/
+*.sln
+*.csproj
+*.user
+*.swp
+*.swo
+*~
+
+## 🖼️ 编译产物与缓存
+build/
+bin/
+obj/
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+
+## 🎨 资源文件中间态
+assets/sprites/*.psd
+assets/sprites/*.aseprite
+assets/audio/*.wav/temp
+*.tmp
+*.cache
+
+## 📝 临时文档
+docs/*.bak
+docs/*.backup
+temp/
+*.log
+logs/
+
+## 🔐 敏感信息 (重要！)
+.env
+.env.local
+*.pem
+*.key
+config/secrets.json
+credentials.json
+
+## 💾 数据库与数据文件
+data/*.db
+data/*.sqlite
+cache/
+temp_data/
+
+## 📦 依赖包
+node_modules/
+venv/
+__pycache__/
+*.egg-info/
+
+## 🎮 游戏引擎特定
+UnityLibrary/
+Library/
+Temp/
+obj/
+*.pidb
+*.prefab.meta
+*.scene.meta
+
+## 🗂️ 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## 📊 项目分析文件
+coverage/
+.nyc_output/
+*.lcov
+
+## 🔧 构建工具输出
+dist/
+out/
+release/
+
+---
+
+## ✅ 必须提交的文件
+
+| 类型 | 说明 |
+|------|------|
+| **所有 .md** | 设计文档、世界观设定 |
+| **所有 .json/.yaml** | 配置数据（卡牌、物品等） |
+| **所有 .lua** | 游戏逻辑脚本 |
+| **所有 .png/.wav/.ogg** | 最终资源文件 |
+
+⚠️ **注意：** 提交前请检查是否包含敏感信息！
+
