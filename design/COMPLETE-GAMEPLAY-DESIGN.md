@@ -47,198 +47,70 @@
 
 #### 1.2.2 人口管理系统
 
-**人口来源与消耗:**
+**核心逻辑:**
+- NPC 招募需要满足建筑等级要求
+- NPC 分配到对应建筑工作产生产出
+- NPC 关系系统影响对话内容和任务难度
 
-```gdscript
-class PopulationManager:
-    var current_population := 0
-    var max_capacity := 100
-    
-    # NPC 招募流程
-    func recruit_npc(npc_type: String, cost_gold: int) -> bool:
-        if current_population >= max_capacity:
-            return false
-        
-        # 检查建筑等级是否满足要求
-        if not has_required_buildings(npc_type):
-            return false
-        
-        # 扣除金币并增加人口
-        game.gold -= cost_gold
-        current_population += 1
-        
-        # NPC 分配到对应建筑工作
-        assign_npc_to_building(npc_type)
-        
-        return true
-    
-    # 建筑人口需求检查
-    func has_required_buildings(npc_type: String) -> bool:
-        match npc_type:
-            "soldier":
-                return building_manager.get_level("barracks") >= 2
-            "blacksmith":
-                return building_manager.get_level("forge") >= 3
-            "alchemist":
-                return building_manager.get_level("alchemy_tower") >= 4
-        
-        return false
+**NPC 关系等级划分:**
+| 关系值 | 状态 | 效果 |
+|--------|------|------|
+| 0~20 | 敌对 | NPC 拒绝交易，可能攻击玩家 |
+| 21~49 | 冷淡 | 正常交易但无折扣 |
+| 50~79 | 友好 | 提供价格优惠，解锁隐藏任务 |
+| 80~100 | 信赖 | 特殊对话，赠送稀有物品 |
 
-# NPC 对话触发机制
-func trigger_npc_dialogue(npc_id: String):
-    var dialogue_tree := load_dialogue_tree(npc_id)
+**建筑人口需求检查逻辑:**
+```
+if current_population >= max_capacity:
+    return false  # 人口已满
     
-    # 检查对话条件
-    if not check_dialogue_conditions(npc_id):
-        show_generic_greeting()
-        return
-    
-    # 显示个性化对话
-    show_special_dialogue(dialogue_tree, get_npc_relationship(npc_id))
-
-# NPC 关系系统 (影响对话内容和任务难度)
-var npc_relationships: Dictionary = {}
-
-func update_npc_relationship(npc_id: String, delta: int):
-    if not npc_relationships.has(npc_id):
-        npc_relationships[npc_id] = 50  # 初始中立值
-    
-    var new_value := clamp(npc_relationships[npc_id] + delta, 0, 100)
-    npc_relationships[npc_id] = new_value
-
-# 关系等级划分:
-# - 0~20: 敌对 (NPC 拒绝交易，可能攻击玩家)
-# - 21~49: 冷淡 (正常交易但无折扣)
-# - 50~79: 友好 (提供价格优惠，解锁隐藏任务)
-# - 80~100: 信赖 (特殊对话，赠送稀有物品)
+if not has_required_buildings(npc_type):
+    return false  # 建筑等级不足
 ```
 
 #### 1.2.3 NPC 对话系统脚本格式
 
-**对话树结构定义:**
+**对话树结构定义 (JSON):**
 
 ```json
 {
     "dialogue_id": "blacksmith_intro",
     "npc_id": "blacksmith_master_kael",
     "relationship_threshold": 50,
-    "branches": [
-        {
-            "trigger_condition": "first_meeting",
-            "lines": [
-                {
-                    "speaker": "Kael",
-                    "text": "欢迎来到铁匠铺，冒险者。有什么需要帮助的吗？",
-                    "expression": "neutral"
-                },
-                {
-                    "speaker": "Player",
-                    "choices": [
-                        {"text": "我想强化装备", "next_branch": "forge_service"},
-                        {"text": "你在做什么？", "next_branch": "work_description"},
-                        {"text": "再见", "action": "close_dialogue"}
-                    ]
-                }
-            ]
-        },
-        {
-            "trigger_condition": "relationship_>=50",
-            "lines": [
-                {
-                    "speaker": "Kael",
-                    "text": "老朋友，今天想打造什么武器？我最近研究出几个新配方。",
-                    "expression": "warm"
-                }
-            ]
-        }
-    ],
-    "rewards": {
-        "type": "discount",
-        "value": 0.15,
-        "duration": "permanent"
-    }
+    "branches": [/* 分支数组 */]
 }
 ```
 
-**对话执行引擎 (GDScript):**
+**核心字段说明:**
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `dialogue_id` | String | 对话唯一标识符 |
+| `npc_id` | String | NPC 身份 ID |
+| `relationship_threshold` | Int | 触发对话所需的最小关系值 |
+| `branches` | Array | 对话分支数组，每个包含 trigger_condition 和 lines |
 
-```gdscript
-class DialogueEngine:
-    var current_dialogue_tree: Dictionary = {}
-    var player_choice_index := 0
-    
-    func start_dialogue(dialogue_id: String):
-        current_dialogue_tree = load_json("dialogues/" + dialogue_id + ".json")
-        
-        # 检查关系阈值
-        if not check_relationship_threshold():
-            return false
-        
-        show_npc_sprite(current_dialogue_tree["npc_id"])
-        display_line_stack(current_dialogue_tree.branches[0].lines)
-        
-        return true
-    
-    func display_line_stack(lines: Array):
-        for line in lines:
-            var label := create_speech_label(line.speaker, line.text)
-            
-            # 根据表情调整 NPC 面部动画
-            if line.has("expression"):
-                animate_npc_face(line.expression)
-            
-            add_child(label)
-    
-    func show_choices(choices: Array):
-        for choice in choices:
-            var button := create_choice_button(choice.text)
-            button.pressed.connect(_on_choice_selected.bind(choice))
-            choices_container.add_child(button)
-    
-    func _on_choice_selected(choice: Dictionary, action_type: String):
-        match action_type:
-            "next_branch":
-                player_choice_index = choice.next_branch
-                display_dialogue_branch(current_dialogue_tree.branches[choice.next_branch])
-            
-            "close_dialogue":
-                close_dialogue_ui()
-                return
-            
-            "reward_grant":
-                grant_reward(choice.rewards)
+**对话执行引擎逻辑:**
+```
+1. 加载 JSON 对话树数据
+2. 检查 NPC 关系阈值是否满足
+3. 显示 NPC 头像/表情动画
+4. 逐行展示对话内容
+5. 等待玩家选择分支或关闭对话框
+```
 
-# 对话条件检查函数
-func check_dialogue_conditions(npc_id: String) -> bool:
-    var dialogue_data := get_npc_dialogue_data(npc_id)
-    
-    # 检查关系阈值
-    if npc_relationships.get(npc_id, 0) < dialogue_data.relationship_threshold:
-        return false
-    
-    # 检查任务进度
-    if dialogue_data.has("quest_requirement"):
-        if not quest_manager.is_quest_completed(dialogue_data.quest_requirement):
-            return false
-    
-    return true
+**NPC 表情系统 (影响对话氛围):**
+- `neutral` - 正常交流
+- `warm` - 友好热情  
+- `serious` - 严肃认真
+- `concerned` - 担忧焦虑
+- `angry` - 愤怒敌对
+- `sad` - 悲伤失落
 
-# NPC 表情系统 (影响对话氛围)
-enum NPCExpression {
-    neutral,      # 正常交流
-    warm,         # 友好热情
-    serious,      # 严肃认真
-    concerned,    # 担忧焦虑
-    angry,        # 愤怒敌对
-    sad           # 悲伤失落
-}
-
-func animate_npc_face(expression: NPCExpression):
-    var sprite := $NPCSprite
-    var animation_name := "face_" + NPCExpression.keys()[expression]
-    
-    if sprite.has_animation(animation_name):
-        sprite.play(animation_name)
+**表情切换逻辑:**
+```
+if line.has("expression"):
+    animate_npc_face(line.expression)
 ```
 
 ### 1.3 地下城入口机制
@@ -254,81 +126,27 @@ func animate_npc_face(expression: NPCExpression):
 
 #### 1.3.2 入口切换逻辑
 
-```gdscript
-class DungeonEntranceManager:
-    var current_dungeon_type := "beginner"
-    var player_level := 1
-    
-    func enter_dungeon(dungeon_id: String):
-        # 检查解锁条件
-        if not is_unlocked(dungeon_id):
-            show_error("该地牢尚未解锁！请提升主堡等级或完成前置任务")
-            return
-        
-        # 检查玩家等级是否满足要求
-        var min_level := get_dungeon_min_level(dungeon_id)
-        if player_level < min_level:
-            show_warning("建议玩家等级达到 %d 后再进入" % min_level)
-        
-        # 加载地下城场景
-        load_dungeon_scene(dungeon_id)
-        
-        # 重置地下城状态
-        reset_dungeon_state()
-    
-    func is_unlocked(dungeon_id: String) -> bool:
-        match dungeon_id:
-            "beginner":
-                return true
-            
-            "abandoned_mine":
-                return building_manager.get_level("main_keep") >= 3
-            
-            "ancient_ruins":
-                return building_manager.get_level("watchtower") >= 2
-            
-            "abyssal_chasm":
-                return quest_manager.is_quest_completed("main_story_chapter_1")
-        
-        return false
-    
-    func reset_dungeon_state():
-        # 重置地牢层级计数器
-        current_layer := 0
-        
-        # 重置任务计时器
-        session_timer.start()
-        
-        # 生成随机任务
-        quest_generator.generate_random_quest()
-
-# 地下城加载流程 (优化体验，减少等待)
-func load_dungeon_scene(dungeon_id: String):
-    var scene_path := "res://scenes/dungeons/" + dungeon_id + ".tscn"
-    
-    # 预加载资源
-    preload_resources(scene_path)
-    
-    # 显示加载界面
-    show_loading_screen()
-    
-    # 异步加载场景
-    var scene = load(scene_path)
-    var instance = scene.instantiate()
-    
-    get_tree().current_scene.add_child(instance)
-    get_tree().change_scene_to_packed(scene)
-
-# 预加载资源函数 (减少卡顿)
-func preload_resources(scene_path: String):
-    ResourceLoader.load_threaded_request(scene_path)
-    
-    while ResourceLoader.load_threaded_get_status(scene_path) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
-        get_tree().process()
-        await get_tree().create_timer(0.1).timeout
-    
-    show_loading_complete()
+**核心流程:**
 ```
+1. 检查地牢解锁条件 (建筑等级/任务进度)
+2. 检查玩家等级是否满足要求
+3. 加载地下城场景并显示加载界面
+4. 重置地下城状态 (层级计数器/任务计时器)
+5. 生成随机任务
+```
+
+**解锁条件逻辑:**
+| 地牢类型 | 解锁条件 |
+|----------|----------|
+| `beginner` | 初始解锁 |
+| `abandoned_mine` | 主堡等级 ≥ 3 |
+| `ancient_ruins` | 瞭望塔等级 ≥ 2 |
+| `abyssal_chasm` | 完成主线任务第一章 |
+
+**场景加载优化:**
+- **预加载资源**: 减少卡顿感
+- **异步加载**: 显示加载界面避免等待焦虑
+- **状态重置**: 确保每次进入地牢都是全新环境
 
 ### 1.4 中立城镇交易功能
 
@@ -562,41 +380,17 @@ func load_saved_state():
 **设计原则:**  
 > "Phase 1 优先保证基本功能可用，操作手感参数后续迭代优化"
 
-```gdscript
-class PlayerMovement:
-    @export var max_speed := 300.0       # 基础速度 (可调整)
-    @export var acceleration := 500.0    # 加速度
-    
-    var velocity := Vector2.ZERO
-    var is_moving := false
-    
-    func _physics_process(delta):
-        # 读取输入
-        var input_vector := Vector2(
-            Input.get_action_strength("move_right") - 
-            Input.get_action_strength("move_left"),
-            Input.get_action_strength("move_up") - 
-            Input.get_action_strength("move_down")
-        )
-        
-        if input_vector != Vector2.ZERO:
-            is_moving = true
-            
-            # 应用加速度
-            velocity.x += input_vector.x * acceleration * delta
-            velocity.y += input_vector.y * acceleration * delta
-            
-            # 限制最大速度
-            velocity = velocity.clamped(max_speed)
-        else:
-            is_moving = false
-            velocity = velocity.lerp(Vector2.ZERO, 0.1)
-
-# 后期优化方向 (Phase 2+):
-# - 增加摩擦力/减速效果
-# - 实现跳跃充能机制
-# - 添加动画状态机平滑过渡
+**核心逻辑:**
 ```
+读取方向输入 → 应用加速度 → 限制最大速度 → 松手后平滑减速
+```
+
+**后期优化方向 (Phase 2+):**
+- 增加摩擦力/减速效果
+- 实现跳跃充能机制
+- 添加动画状态机平滑过渡
+
+**移动手感参数建议表:**
 
 #### 2.1.2 移动手感参数建议表
 
@@ -620,64 +414,25 @@ class PlayerMovement:
 
 #### 2.2.2 接触触发实现流程
 
-```gdscript
-class EnemyEncounterTrigger:
-    var encounter_radius := 32.0  # 碰撞检测半径
-    
-    func _ready():
-        $CollisionShape2D.shape.radius = encounter_radius
-        body_entered.connect(_on_body_entered)
-    
-    func _on_body_entered(body: Node):
-        if body.is_in_group("enemy"):
-            trigger_encounter(body)
+**核心逻辑:**
+```
+1. 玩家碰撞体与怪物重叠 → 触发 encounter
+2. 检查是否已在战斗中 (避免重复触发)
+3. 记录触发源敌人
+4. 搜索增援范围内的其他敌人
+5. 将范围内所有敌人都加入战斗队列
+6. 启动回合制战斗流程
+```
 
-func trigger_encounter(enemy_node: Node):
-    # 检查是否已在战斗中
-    if battle_manager.is_in_battle():
-        return
-    
-    # 记录触发源敌人
-    var source_enemy := enemy_node as EnemyEntity
-    
-    # 计算增援范围 (核心机制！见 2.3 节)
-    var nearby_enemies := find_enemies_in_range(source_enemy.global_position, ENFORCEMENT_RADIUS)
-    
-    # 将范围内所有敌人都加入战斗队列
-    for enemy in nearby_enemies:
-        battle_manager.add_enemy_to_battle(enemy)
-    
-    # 启动回合制战斗流程
-    battle_manager.start_turn_based_combat()
+**关键参数:**
+- `encounter_radius`: 碰撞检测半径 = 32px
+- `ENFORCEMENT_RADIUS`: 增援范围半径 = 64px (核心机制！)
 
-# 敌人实体类定义
-class EnemyEntity extends CharacterBody2D:
-    var enemy_id := ""
-    var current_state := ENEMY_STATE.IDLE
-    var enforcement_radius := 64.0  # 增援范围半径
-    
-    func _ready():
-        $Area2D.body_entered.connect(_on_area_body_entered)
-    
-    func _on_area_body_entered(body: Node):
-        if body.is_in_group("player"):
-            # 玩家进入警戒范围 → 触发战斗
-            trigger_alert()
+**警戒状态转换逻辑:**
+- **IDLE → ALERTED**: 玩家进入警戒范围时触发
+- **ALERTED → BATTLE**: 检查队友是否在增援范围内，拉入战斗队列
 
-# 警戒状态转换
-func trigger_alert():
-    if current_state == ENEMY_STATE.IDLE:
-        current_state = ENEMY_STATE.ALERTED
-        
-        # 播放警报动画/音效
-        play_alert_animation()
-        
-        # 检查是否有队友在增援范围内
-        var teammates := find_allies_in_group("enemies")
-        for ally in teammates:
-            if get_distance_to(ally) <= enforcement_radius:
-                # 拉入战斗队列
-                battle_manager.queue_enemy_for_enforcement(ally)
+**技能拉怪机制 (主动战术):**                battle_manager.queue_enemy_for_enforcement(ally)
 
 ```
 
@@ -691,51 +446,21 @@ func trigger_alert():
 | **诱饵烟雾** | 15 MP | 96px | 12s | 制造吸引注意力的烟雾弹 |
 | **哨兵号角** | 20 MP | 128px | 15s | 召唤 NPC 队友吸引火力 |
 
-```gdscript
-class TauntSkill:
-    var skill_id := "taunt_voice"
-    var mp_cost := 10
-    var range_radius := 64.0
-    var cooldown_time := 8.0
-    
-    func cast_skill():
-        if not can_cast():
-            return false
-        
-        # 扣除 MP
-        player.mp -= mp_cost
-        
-        # 创建技能效果区域
-        var effect_area := create_taunt_area()
-        get_tree().current_scene.add_child(effect_area)
-        
-        # 标记范围内敌人进入被挑衅状态
-        for enemy in find_enemies_in_range(player.global_position, range_radius):
-            enemy.apply_taunt_status(player, duration=5.0)
-        
-        # 启动冷却计时器
-        start_cooldown()
-
-# 敌人被挑衅状态处理
-func apply_taunt_status(attacker: Node, duration: float):
-    current_state = ENEMY_STATE.TAUNTED
-    
-    # 优先攻击挑衅者
-    target_entity := attacker as CharacterBody2D
-    
-    # 播放受控动画
-    play_taunted_animation()
-
-# 冷却时间管理
-var cooldown_timer := Timer.new()
-
-func start_cooldown():
-    cooldown_timer.start(cooldown_time)
-    cooldown_timer.timeout.connect(_on_cooldown_finished)
-
-func _on_cooldown_finished():
-    can_cast = true
+**技能执行逻辑:**
 ```
+1. 检查 MP 是否足够 && 冷却时间是否结束
+2. 扣除 MP
+3. 创建技能效果区域 (AOE)
+4. 标记范围内敌人进入被挑衅状态
+5. 启动冷却计时器
+```
+
+**敌人被挑衅状态处理:**
+- **优先攻击挑衅者**: `target_entity := attacker`
+- **播放受控动画**: 显示被控制状态
+
+**冷却时间管理:**
+- 技能使用后禁用，直到 timer.timeout 触发
 
 ### 🔥 2.3 **增援范围机制** ← 核心亮点！独特卖点！
 
@@ -762,6 +487,7 @@ func _on_cooldown_finished():
 
 #### 2.3.3 增援拉入战斗完整流程
 
+**流程图:**
 ```mermaid
 graph TD
     A[玩家接触敌人] --> B{检查增援范围}
@@ -775,108 +501,31 @@ graph TD
     I --> J[战斗系统激活]
 ```
 
-**详细实现流程:**
+**核心实现逻辑:**
+1. **触发 encounter**: 记录源敌人，搜索范围内所有敌对单位
+2. **构建待增援队列 (FIFO)**: 按距离排序，限制最大数量=3
+3. **启动延迟计时器**: 0.5s 后开始逐个激活增援
+4. **入场动画**: 从战场边缘冲入战场中心 (30px/s)
 
-```gdscript
-class EnforcementManager:
-    var enforcement_radius := 64.0
-    var max_enforcement_count := 3
-    var enforcement_delay := 0.5
-    
-    # 触发源敌人
-    var source_enemy: EnemyEntity = null
-    
-    # 待增援队列 (FIFO)
-    var reinforcement_queue: Array[EnemyEntity] = []
-    
-    # 已激活的增援数量
-    var active_enforcements := 0
-    
-    func trigger_encounter(source: EnemyEntity):
-        source_enemy = source
-        
-        # 搜索范围内所有敌对单位
-        var all_enemies := get_tree().get_nodes_in_group("enemies")
-        
-        for enemy in all_enemies:
-            if enemy == source:
-                continue
-            
-            # 检查距离
-            var distance := source.global_position.distance_to(enemy.global_position)
-            
-            if distance <= enforcement_radius and not enemy.is_in_battle():
-                # 加入待增援队列
-                reinforcement_queue.append(enemy)
-        
-        # 启动延迟处理流程
-        start_enforcement_delay_timer()
-
-func start_enforcement_delay_timer():
-    var delay_timer := Timer.new()
-    delay_timer.one_shot = true
-    delay_timer.timeout.connect(_on_delay_finished)
-    add_child(delay_timer)
-    delay_timer.start(enforcement_delay)
-
-func _on_delay_finished():
-    # 按顺序激活增援敌人
-    while reinforcement_queue.size() > 0 and active_enforcements < max_enforcement_count:
-        var next_enemy := reinforcement_queue.pop_front()
-        
-        # 标记为战斗中状态
-        next_enemy.is_in_battle = true
-        
-        # 播放入场动画 (从战场边缘冲入)
-        play_enforcement_entry_animation(next_enemy)
-        
-        active_enforcements += 1
-        
-        # 通知战斗系统添加该敌人
-        battle_manager.add_enemy_to_turn_order(next_enemy)
-
-# 增援入场动画实现
-func play_enforcement_entry_animation(enemy: EnemyEntity):
-    var start_position := source_enemy.global_position + Vector2.RIGHT * enforcement_radius
-    enemy.global_position = start_position
-    
-    # 向战场中心移动 (30px/s)
-    var move_direction := (source_enemy.global_position - start_position).normalized()
-    
-    var move_timer := Timer.new()
-    move_timer.timeout.connect(_on_move_tick.bind(enemy, move_direction))
-    add_child(move_timer)
-    move_timer.start(0.1)
-
-func _on_move_tick(enemy: EnemyEntity, direction: Vector2):
-    enemy.global_position += direction * 30.0
-    
-    if enemy.global_position.distance_to(source_enemy.global_position) < 8.0:
-        # 到达战场位置 → 停止移动
-        enemy.velocity = Vector2.ZERO
-
-# 警戒状态下的范围扩大逻辑
-func apply_alert_range_multiplier():
-    match source_enemy.current_state:
-        ENEMY_STATE.ALERTED:
-            enforcement_radius *= alert_range_multiplier  # 1.5x
-        
-        ENEMY_STATE.PATROLLING:
-            enforcement_radius *= (alert_range_multiplier * 0.8)  # 巡逻时范围略小
-
-# 玩家主动规避策略支持
-func can_player_avoid_enforcement():
-    # 如果玩家处于隐身/潜行状态，可避免触发增援
-    if player.is_stealthed:
-        return true
-    
-    # 如果玩家距离足够远，可在敌人警戒前离开
-    if source_enemy.global_position.distance_to(player.global_position) > enforcement_radius * 2.0:
-        return true
-    
-    return false
-
+**关键数据结构:**
+- `source_enemy`: 触发源敌人实体
+- `reinforcement_queue`: FIFO 队列，存储待增援敌人
+- `active_enforcements`: 当前已激活的增援数量计数器
+**移动停止条件:**
 ```
+if enemy.global_position.distance_to(source_enemy) < 8.0:
+    enemy.velocity = Vector2.ZERO  # 到达战场位置 → 停止移动
+```
+
+**警戒状态下的范围扩大逻辑:**
+- **ALERTED 状态**: `enforcement_radius *= 1.5x` (警戒时范围扩大)
+- **PATROLLING 状态**: `enforcement_radius *= 1.2x` (巡逻时范围略小)
+
+**玩家主动规避策略支持:**
+| 条件 | 结果 | 说明 |
+|------|------|------|
+| `player.is_stealthed == true` | ✅ 可避免触发增援 | 隐身/潜行状态 |
+| `距离 > enforcement_radius × 2.0` | ✅ 可在警戒前离开 | 提前撤离警戒范围 |
 
 #### 2.3.4 增援机制的战术意义分析
 
@@ -935,82 +584,20 @@ graph TD
 
 #### 2.4.3 视野范围计算机制
 
-```gdscript
-class VisibilitySystem:
-    var player_viewport := Vector2(512, 512)  # 玩家视野半径 (像素)
-    var fog_of_war_texture := preload("res://textures/fog_of_war.tres")
-    
-    func update_visibility(player_position: Vector2):
-        # 计算可见区域 (圆形范围)
-        var visible_area := calculate_visible_circle(player_position, player_viewport)
-        
-        # 合并到已探索地图数据
-        explored_map.merge_with(visible_area)
-        
-        # 更新迷雾渲染层
-        update_fog_overlay(explored_map)
+**核心逻辑:**
+1. **圆形视野计算**: `calculate_visible_circle(player_position, radius)` → 返回可见区域矩形
+2. **射线投射法**: 360°全向扫描，检测墙壁阻挡视线
+3. **迷雾渲染层更新**: 将探索数据转换为纹理坐标，使用 ShaderMaterial 实时渲染
 
-func calculate_visible_circle(center: Vector2, radius: float) -> Rect2:
-    return Rect2(
-        center - Vector2(radius, radius),
-        Vector2(radius * 2, radius * 2)
-    )
+**关键实现:**
+- `player_viewport`: 玩家视野半径 = 512px (可配置)
+- `Ray casting`: 发射射线检测障碍物，标记可见区域
+- **Shader 渲染逻辑**:
+  - `exploration_factor < 0.5` → 未探索区域：完全黑色
+  - `0.5 ≤ factor < 0.8` → 已知但未探索：灰色轮廓 (30% 可见)
+  - `factor ≥ 0.8` → 已探索区域：正常显示
 
-# 射线投射法实现视野遮挡 (墙壁阻挡视线)
-func calculate_visibility_with_obstacles(player_pos: Vector2):
-    var visible_tiles := []
-    var ray_count := 360  # 360°全向扫描
-    
-    for angle in range(ray_count):
-        var ray_direction := Vector2(cos(deg_to_rad(angle)), sin(deg_to_rad(angle)))
-        
-        # 发射射线检测障碍物
-        var collision := get_ray_cast(player_pos, ray_direction, player_viewport)
-        
-        if collision:
-            # 标记射线覆盖区域为可见
-            mark_visible_area(player_pos, collision.position)
-        else:
-            # 无阻挡 → 视野边缘标记
-            mark_visible_area(player_pos, player_pos + ray_direction * player_viewport)
-
-# 迷雾渲染实现 (使用 ShaderMaterial)
-class FogOfWarRenderer extends CanvasLayer:
-    var fog_texture := Sprite2D.new()
-    
-    func _ready():
-        fog_texture.material = load("res://shaders/fog_of_war_shader.gdshader")
-        add_child(fog_texture)
-    
-    func update_fog_map(explored_tiles: Array[Vector2]):
-        # 将探索数据转换为纹理坐标
-        var fog_data := convert_explored_to_texture_coordinates(explored_tiles)
-        
-        fog_texture.material.set_shader_parameter("explored_area", fog_data)
-
-# Shader 代码片段 (用于迷雾渲染)
-/*
-// fragment shader for fog of war
-uniform sampler2D explored_map;
-varying vec2 v_uv;
-
-void main() {
-    float exploration_factor = texture(explored_map, v_uv).r;
-    
-    if (exploration_factor < 0.5) {
-        // 未探索区域：完全黑色
-        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-    } else if (exploration_factor < 0.8) {
-        // 已知但未探索：灰色轮廓
-        gl_FragColor = vec4(0.3, 0.3, 0.3, 0.7);
-    } else {
-        // 已探索区域：正常显示
-        gl_FragColor = texture(u_texture, v_uv);
-    }
-}
-*/
-
-```
+**侦察类技能/物品:**
 
 #### 2.4.4 侦察技能与视野扩展
 
@@ -1022,27 +609,16 @@ void main() {
 | **探路者之靴** | 装备道具 | 自动标记周围 128px 内的隐藏路径 | 被动生效 |
 | **侦察无人机** | 消耗品 | 派遣无人机探索未知区域 (持续 60s) | 一次性使用 |
 
-```gdscript
-class ScoutSkill:
-    var skill_name := "eagle_eye"
-    var mp_cost := 15
-    var duration := 30.0
-    
-    func activate():
-        player_viewport *= 2.0
-        
-        # 显示技能特效
-        show_skill_effect("eagle_eye")
-        
-        # 启动持续时间计时器
-        var timer := Timer.new()
-        timer.timeout.connect(_on_skill_expired)
-        add_child(timer)
-        timer.start(duration)
-
-func _on_skill_expired():
-    player_viewport /= 2.0
+**技能执行逻辑:**
 ```
+鹰眼术激活:
+1. player_viewport *= 2.0 (视野扩大至 2 倍)
+2. show_skill_effect("eagle_eye") (播放特效)
+3. Timer.new() → 30s 后自动恢复原状
+```
+
+**技能结束处理:**
+- `_on_skill_expired()`: `player_viewport /= 2.0` (视野恢复正常大小)
 
 ---
 
@@ -1052,8 +628,7 @@ func _on_skill_expired():
 
 #### 3.1.1 战斗流程设计
 
-**标准回合流程:**
-
+**标准回合流程图:**
 ```mermaid
 graph TD
     A[战斗开始] --> B[玩家行动阶段]
@@ -1063,87 +638,37 @@ graph TD
     C -->|物品 | F[使用消耗品]
     C -->|逃跑 | G[成功率判定]
     
-    D --> H{命中？}
-    H -->|是 | I[造成伤害/异常状态]
-    H -->|否 | J[攻击落空]
-    
-    E --> K{MP 足够？}
-    K -->|是 | L[释放技能效果]
-    K -->|否 | M[技能失败]
-    
-    F --> N[应用物品效果]
-    G --> O{成功逃跑？}
-    O -->|是 | P[战斗结束]
-    O -->|否 | Q[敌人反击机会]
-    
-    I --> R{敌人存活？}
-    L --> R
-    M --> R
-    N --> R
-    
     R -->|是 | S[敌人行动阶段]
     R -->|否 | T[玩家胜利]
     
-    S --> U[敌人 AI 决策]
-    U --> V[执行攻击/技能]
-    V --> W{玩家存活？}
     W -->|是 | X[回合循环继续]
     W -->|否 | Y[玩家失败]
 ```
 
+**核心流程说明:**
+- **玩家行动阶段**: 攻击/技能/物品/逃跑四种选择
+- **敌人行动阶段**: AI 决策 → 执行攻击/技能
+- **胜利条件**: 敌人存活=false → 玩家胜利
+- **失败条件**: 玩家存活=false → 玩家失败
+
 #### 3.1.2 核心数值公式
 
-**伤害计算公式:**
-
-```gdscript
-class DamageCalculation:
-    var base_damage := attacker.attack * 0.5
-    var random_factor := randf_range(0.85, 1.0)  # ±15% 波动
-    
-    func calculate_physical_damage(attacker: Character, defender: Character) -> int:
-        # 基础伤害 × 随机因子
-        var damage := base_damage * random_factor
-        
-        # 属性克制加成 (见 3.2 节)
-        if is_type_advantage(attacker.element_type, defender.element_type):
-            damage *= 1.5
-        elif is_type_disadvantage(attacker.element_type, defender.element_type):
-            damage *= 0.75
-        
-        # 暴击判定 (5% 基础概率)
-        if randf() < attacker.crit_rate:
-            damage *= attacker.crit_multiplier  # 默认 2.0x
-        
-        # 防御减免
-        var defense_factor := defender.defense / (defender.defense + base_damage * 10)
-        damage *= (1.0 - defense_factor)
-        
-        return int(max(damage, 1))
-
-# 属性克制判定函数
-func is_type_advantage(attack_type: String, defense_type: String) -> bool:
-    var advantage_table := {
-        "fire": ["grass", "ice"],
-        "water": ["fire", "ground"],
-        "electric": ["water", "flying"],
-        "grass": ["water", "ground"],
-        "ice": ["flying", "dragon"]
-    }
-    
-    return advantage_table.has(attack_type) and defense_type in advantage_table[attack_type]
-
-func is_type_disadvantage(attack_type: String, defense_type: String) -> bool:
-    var disadvantage_table := {
-        "fire": ["water", "rock"],
-        "water": ["electric", "grass"],
-        "electric": ["ground"],
-        "grass": ["fire", "flying"],
-        "ice": ["fire", "rock"]
-    }
-    
-    return disadvantage_table.has(attack_type) and defense_type in disadvantage_table[attack_type]
-
+**伤害计算公式逻辑:**
 ```
+基础伤害 = attacker.attack × 0.5
+随机因子 = randf_range(0.85, 1.0)  # ±15% 波动
+
+最终伤害 = (基础伤害 × 随机因子) 
+           × 属性克制加成 (1.5x/0.75x/1.0x)
+           × 暴击判定 (crit_rate × crit_multiplier)
+           × 防御减免公式
+```
+
+**属性克制判定逻辑:**
+- **克制关系**: `is_type_advantage(attack_type, defense_type)` → true/false
+- **被克关系**: `is_type_disadvantage(attack_type, defense_type)` → true/false
+
+**核心属性克制表 (5 种元素):**
 
 ### 3.2 属性克制表设计 (5 种核心属性)
 
@@ -1170,23 +695,14 @@ func is_type_disadvantage(attack_type: String, defense_type: String) -> bool:
 #### 3.2.2 属性组合与双属性系统
 
 **双属性机制设计:**
+- **核心逻辑**: `get_combined_modifier(primary_type, secondary_type, defense_type)` → 返回最终克制系数
+- **计算公式**: `clamp(primary_mod × secondary_mod, 0.25, 2.25)` (避免过强或过弱)
 
-```gdscript
-class DualTypeSystem:
-    var primary_type := "fire"
-    var secondary_type := "ice"
-    
-    func get_combined_modifier(defense_type: String) -> float:
-        var primary_mod := get_type_modifier(primary_type, defense_type)
-        var secondary_mod := get_type_modifier(secondary_type, defense_type)
-        
-        # 双属性相乘 (避免过强或过弱)
-        return clamp(primary_mod * secondary_mod, 0.25, 2.25)
-
-# 双属性示例:
-# - 火 + 冰 = 高爆发但防御脆弱 (克制草/龙，被水/岩双重克制)
-# - 水 + 电 = 快速打击 + 持续伤害 (克制火/飞，被草/地限制)
-```
+**双属性示例组合:**
+| 组合 | 特性描述 | 克制关系 | 被克关系 |
+|------|----------|----------|----------|
+| **火 + 冰** | 高爆发但防御脆弱 | 草/龙 | 水/岩 (双重克制) |
+| **水 + 电** | 快速打击 + 持续伤害 | 火/飞 | 草/地 |
 
 ### 3.3 技能树/技能池结构
 
@@ -1201,53 +717,35 @@ class DualTypeSystem:
 
 #### 3.3.2 技能数据格式定义
 
+**JSON 核心字段说明:**
 ```json
 {
-    "skill_id": "fireball",
-    "name": "火球术",
-    "element_type": "fire",
-    "category": "offensive",
-    "mp_cost": 10,
-    "cooldown_turns": 2,
-    "base_damage": 50,
-    "hit_chance": 0.95,
-    "status_effects": [
-        {
-            "type": "burn",
-            "damage_per_turn": 5,
-            "duration_turns": 3,
-            "chance": 0.7
-        }
-    ],
-    "animation_id": "fireball_throw",
-    "unlock_level": 5
+    "skill_id": "火球术唯一标识符",
+    "name": "显示名称",
+    "element_type": "fire/水/电等",
+    "category": "offensive/defensive/support",
+    "mp_cost": 技能消耗 MP,
+    "cooldown_turns": 冷却回合数,
+    "base_damage": 基础伤害值,
+    "hit_chance": 命中率 (0-1),
+    "status_effects": [/* 状态效果数组 */],
+    "animation_id": "动画 ID",
+    "unlock_level": 解锁等级要求
 }
+```
 
-// 状态效果系统
-enum StatusEffect {
-    BURN,      // 灼烧：每回合持续伤害
-    FREEZE,    // 冻结：下回合无法行动
-    STUN,      // 眩晕：下回合无法行动
-    POISON,    // 中毒：持续掉血 + 降低防御
-    SLOW       // 减速：行动顺序延后
-}
+**状态效果系统:**
+| 效果类型 | 描述 | 持续时间 | 伤害机制 |
+|----------|------|----------|----------|
+| **BURN (灼烧)** | 每回合持续伤害 | 3 回合 | damage_per_turn |
+| **FREEZE (冻结)** | 下回合无法行动 | 1 回合 | 完全控制 |
+| **STUN (眩晕)** | 下回合无法行动 | 1 回合 | 完全控制 |
+| **POISON (中毒)** | 持续掉血 + 降低防御 | 可变 | damage_per_turn + 防御减免 |
+| **SLOW (减速)** | 行动顺序延后 | 可变 | 行动队列排序调整 |
 
-// 状态效果应用逻辑
-func apply_status_effect(effect_type: StatusEffect, target: Character):
-    if not target.has_immunity(effect_type):
-        var existing_status := target.get_active_status(effect_type)
-        
-        if existing_status:
-            # 刷新持续时间 (不叠加伤害)
-            existing_status.duration = max(existing_status.duration, new_duration)
-        else:
-            # 添加新状态
-            target.add_status(StatusData.new(
-                type=effect_type,
-                damage_per_turn=get_damage_per_turn(effect_type),
-                duration=new_duration
-            ))
-
+**状态效果应用逻辑:**
+- **刷新机制**: `existing_status.duration = max(现有时长，新时长)` (不叠加伤害)
+- **新增机制**: 检查免疫 → 添加新状态数据
 ```
 
 ### 3.4 AI 行为逻辑 (怪物行为模式分类)
@@ -1256,77 +754,38 @@ func apply_status_effect(effect_type: StatusEffect, target: Character):
 
 | AI 类型 | 特征描述 | 优先级策略 | 适用场景 |
 |--------|----------|------------|----------|
-| **Aggressive (激进型)** | 优先攻击低血量目标 | 击杀威胁最大者 | Boss 战、精英怪 |
-| **Defensive (防守型)** | 保护高价值队友，优先回血 | 维持团队生存 | 团队战斗、防御关卡 |
-| **Tactical (战术型)** | 根据属性克制选择技能 | 最大化伤害输出 | 智谋型 Boss |
-| **Random (随机型)** | 无固定策略，行为不可预测 | 完全随机选择 | 低级杂兵、混乱区域 |
+| **Aggressive** | 优先攻击低血量目标 | 击杀威胁最大者 | Boss 战、精英怪 |
+| **Defensive** | 保护高价值队友，优先回血 | 维持团队生存 | 团队战斗、防御关卡 |
+| **Tactical** | 根据属性克制选择技能 | 最大化伤害输出 | 智谋型 Boss |
+| **Random** | 无固定策略，行为不可预测 | 完全随机选择 | 低级杂兵、混乱区域 |
 
 #### 3.4.2 AI 决策流程实现
 
-```gdscript
-class EnemyAI:
-    var ai_type := AI_TYPE.TACTICAL
-    
-    func decide_action(target_party: Array[Character]):
-        match ai_type:
-            AI_TYPE.AGGRESSIVE:
-                return choose_lowest_hp_target(target_party)
-            
-            AI_TYPE.DEFENSIVE:
-                if has_low_hp_allies():
-                    return use_healing_skill()
-                else:
-                    return attack_weakest_enemy(target_party)
-            
-            AI_TYPE.TACTICAL:
-                return choose_optimal_counter_attack(target_party)
-            
-            AI_TYPE.RANDOM:
-                return random_action()
-
-func choose_optimal_counter_attack(targets: Array[Character]) -> Dictionary:
-    var best_target := targets[0]
-    var max_damage := 0.0
-    
-    for target in targets:
-        # 计算每种技能的预期伤害
-        for skill in available_skills:
-            var expected_dmg := calculate_expected_damage(skill, target)
-            
-            if expected_dmg > max_damage:
-                max_damage := expected_dmg
-                best_target := target
-                optimal_skill := skill
-    
-    return {
-        "target": best_target,
-        "skill": optimal_skill,
-        "damage_estimate": int(max_damage)
-    }
-
-# 预期伤害计算公式
-func calculate_expected_damage(skill: Dictionary, target: Character) -> float:
-    var base_dmg := skill.base_damage
-    
-    # 属性克制加成
-    var type_modifier := get_type_modifier(skill.element_type, target.element_type)
-    
-    # 命中概率加权
-    var hit_chance := skill.hit_chance * (1.0 - target.evasion_rate)
-    
-    # 暴击期望值
-    var crit_factor := 1.0 + (skill.crit_rate * (skill.crit_multiplier - 1))
-    
-    return base_dmg * type_modifier * hit_chance * crit_factor
-
+**核心逻辑:**
 ```
+EnemyAI.decide_action(target_party):
+    match ai_type:
+        AGGRESSIVE → choose_lowest_hp_target()
+        DEFENSIVE → (队友血量低？use_healing_skill() : attack_weakest_enemy())
+        TACTICAL → choose_optimal_counter_attack()
+        RANDOM → random_action()
+```
+
+**Tactical AI 最优反击选择逻辑:**
+1. **遍历所有敌人目标** → 计算每种技能的预期伤害
+2. **预期伤害公式**: `base_dmg × type_modifier × hit_chance × crit_factor`
+3. **返回结果**: `{target, skill, damage_estimate}` (最佳目标 + 技能组合)
+
+**预期伤害计算公式:**
+- `type_modifier`: 属性克制加成系数
+- `hit_chance`: 命中概率 = skill.hit_chance × (1 - target.evasion_rate)
+- `crit_factor`: 暴击期望值 = 1.0 + (skill.crit_rate × (skill.crit_multiplier - 1))
 
 ### 3.5 **增援拉入战斗的流程** ← 与第二章衔接！
 
 #### 3.5.1 完整流程闭环设计
 
 **从探索触发到战斗激活的完整链路:**
-
 ```mermaid
 sequenceDiagram
     participant Player as 玩家角色
@@ -1336,15 +795,11 @@ sequenceDiagram
     
     Player->>Enemy: 接触/技能拉怪
     Enemy->>Enforcement: trigger_encounter(源敌人)
-    Enforcement->>Enforcement: search_enemies_in_range()
-    Enforcement->>Enforcement: queue_reinforcements()
-    
-    Note over Enforcement: 延迟计时器启动 (0.5s)
     Enforcement->>Battle: start_delay_timer()
     
+    Note over Enforcement: 延迟计时器启动 (0.5s)
     loop 延迟期间 | 玩家可尝试逃离/策略调整
         Battle->>Player: 显示增援警告
-        Player->>Enforcement: attempt_escape()
     end
     
     Enrollment->>Enforcement: delay_finished()
@@ -1353,7 +808,6 @@ sequenceDiagram
     loop 逐个激活增援 (最多 3 个)
         Battle->>Enemy: mark_as_in_battle()
         Enemy->>Player: play_entry_animation()
-        Battle->>Enforcement: increment_active_count()
     end
     
     Battle->>Player: 回合制战斗开始！
@@ -1361,75 +815,20 @@ sequenceDiagram
 
 #### 3.5.2 关键衔接点实现
 
-**探索阶段 → 战斗阶段的过渡:**
+**探索阶段 → 战斗阶段的过渡流程:**
+1. **玩家接触敌人**: `on_player_contact_enemy(source_enemy)`
+2. **检查是否已在战斗中**: 避免重复触发
+3. **启动增援管理器**: 核心机制！搜索范围内敌人
+4. **显示战斗开始提示**: 给玩家反应时间 (0.5s)
+5. **延迟后正式进入回合制**: `battle_manager.start_turn_based_combat()`
 
-```gdscript
-# 玩家接触敌人时的完整处理流程
-func on_player_contact_enemy(source_enemy: EnemyEntity):
-    # 1. 检查是否已在战斗中
-    if battle_manager.is_in_battle():
-        return
-    
-    # 2. 启动增援管理器 (核心机制！)
-    enforcement_manager.trigger_encounter(source_enemy)
-    
-    # 3. 显示战斗开始提示 (给玩家反应时间)
-    show_combat_start_warning()
-    
-    # 4. 延迟 0.5s 后正式进入回合制
-    await get_tree().create_timer(0.5).timeout
-    
-    # 5. 启动战斗系统
-    battle_manager.start_turn_based_combat()
+**逃跑成功率公式:**
+```
+base_chance = 0.3 (基础 30%)
+level_bonus = max(0, player_level - enemy_average_level) × 0.05 (等级差加成)
+terrain_penalty = get_terrain_escape_penalty() (环境因素惩罚，狭窄区域降低成功率)
 
-# 增援管理器与战斗系统的接口
-class EnforcementManager:
-    var reinforcement_queue: Array[EnemyEntity] = []
-    
-    func trigger_encounter(source: EnemyEntity):
-        # ... (搜索范围内敌人逻辑)
-        
-        # 通知战斗系统准备接收增援
-        battle_manager.prepare_for_reinforcements(reinforcement_queue.size())
-
-class BattleManager:
-    var reinforcement_count := 0
-    
-    func prepare_for_reinforcements(count: int):
-        reinforcement_count = count
-        
-        # 显示警告 UI (玩家知道将有增援)
-        show_enforcement_warning(count)
-        
-        # 启动倒计时动画 (增加紧张感)
-        start_reinforcement Countdown(count, duration=3.0)
-
-# 玩家逃跑机制支持
-func attempt_escape():
-    if battle_manager.is_in_battle():
-        # 计算逃跑成功率
-        var escape_chance := calculate_escape_probability()
-        
-        if randf() < escape_chance:
-            battle_manager.end_combat("player_fled")
-            return true
-        
-        # 逃跑失败 → 敌人反击机会
-        show_escape_failed_animation()
-        battle_manager.enemy_counter_attack()
-
-# 逃跑成功率公式
-func calculate_escape_probability() -> float:
-    var base_chance := 0.3  # 基础 30%
-    
-    # 等级差加成 (玩家等级高于敌人平均等级时提升)
-    var level_bonus := max(0, player_level - enemy_average_level) * 0.05
-    
-    # 环境因素 (在狭窄区域降低成功率)
-    var terrain_penalty := get_terrain_escape_penalty()
-    
-    return clamp(base_chance + level_bonus - terrain_penalty, 0.1, 0.9)
-
+最终成功率 = clamp(base_chance + level_bonus - terrain_penalty, 0.1, 0.9)
 ```
 
 ---
@@ -1442,16 +841,15 @@ func calculate_escape_probability() -> float:
 
 | 稀有度 | 颜色标识 | 掉落概率 | 基础价值 | 典型物品举例 |
 |--------|----------|----------|----------|--------------|
-| **Common (普通)** | ⬜ 白色 | 50% | 1-10g | 破旧装备、基础材料 |
-| **Uncommon (罕见)** | 🟢 绿色 | 30% | 10-50g | 精良武器、稀有草药 |
-| **Rare (稀有)** | 🔵 蓝色 | 15% | 50-200g | 魔法装备、炼金配方 |
-| **Epic (史诗)** | 🟣 紫色 | 4% | 200-1000g | 传奇武器、古代遗物 |
-| **Legendary (传奇)** | 🟡 金色 | 1% | 1000g+ | 神器、传说级材料 |
+| **Common** | ⬜ 白色 | 50% | 1-10g | 破旧装备、基础材料 |
+| **Uncommon** | 🟢 绿色 | 30% | 10-50g | 精良武器、稀有草药 |
+| **Rare** | 🔵 蓝色 | 15% | 50-200g | 魔法装备、炼金配方 |
+| **Epic** | 🟣 紫色 | 4% | 200-1000g | 传奇武器、古代遗物 |
+| **Legendary** | 🟡 金色 | 1% | 1000g+ | 神器、传说级材料 |
 
 #### 4.1.2 物资分类与用途矩阵
 
 **基础资源类:**
-
 | 类别 | Common | Uncommon | Rare | Epic | Legendary |
 |------|--------|----------|------|------|-----------|
 | **矿石** | 铁锭 | 钢锭 | 秘银矿 | 陨铁矿石 | 龙鳞金属 |
@@ -1459,7 +857,6 @@ func calculate_escape_probability() -> float:
 | **皮革** | 兽皮 | 魔兽革 | 巨龙皮 | 元素兽皮 | 虚空皮革 |
 
 **装备类:**
-
 | 部位 | Common | Uncommon | Rare | Epic | Legendary |
 |------|--------|----------|------|------|-----------|
 | **武器** | 铁剑 | 钢刃长刀 | 秘银法杖 | 龙炎剑 | 灭世之刃 |
@@ -1468,43 +865,15 @@ func calculate_escape_probability() -> float:
 
 #### 4.1.3 掉落率动态调整机制
 
-```gdscript
-class DropRateManager:
-    var base_drop_rates := {
-        "Common": 0.50,
-        "Uncommon": 0.30,
-        "Rare": 0.15,
-        "Epic": 0.04,
-        "Legendary": 0.01
-    }
-    
-    var luck_factor := 1.0  # 玩家幸运属性加成
-    
-    func calculate_drop_rate(rarity: String) -> float:
-        var base_rate := base_drop_rates[rarity]
-        
-        # 幸运属性加成 (线性增长，最大 +20%)
-        var luck_bonus := min(0.20, player.stats.luck * 0.004)
-        
-        return base_rate * (1.0 + luck_bonus)
+**核心逻辑:**
+- `base_drop_rates`: 基础掉落概率表 (Common=50%, Legendary=1%)
+- `luck_factor`: 玩家幸运属性加成 (线性增长，最大 +20%)
+- **计算公式**: `最终掉落率 = base_rate × (1.0 + luck_bonus)`
 
-# 掉落判定实现
-func roll_for_drop(item_pool: Array[Dictionary]) -> Dictionary:
-    # 根据稀有度权重随机选择
-    var weighted_pool := build_weighted_pool(item_pool)
-    var selected_item := weighted_pool[randi() % weighted_pool.size()]
-    
-    # 检查数量掉落 (1-3 件，取决于稀有度)
-    var quantity := randi_range(1, get_max_quantity(selected_item.rarity))
-    
-    return {
-        "item_id": selected_item.id,
-        "rarity": selected_item.rarity,
-        "quantity": quantity,
-        "drop_source": current_dungeon_layer
-    }
-
-```
+**掉落判定实现流程:**
+1. **构建加权池**: `build_weighted_pool(item_pool)` → 根据稀有度权重随机选择
+2. **数量掉落**: `randi_range(1, get_max_quantity(selected_item.rarity))` (1-3 件，取决于稀有度)
+3. **返回结果**: `{item_id, rarity, quantity, drop_source}`
 
 ### 4.2 基地建设消耗/产出规则
 
@@ -1519,73 +888,27 @@ func roll_for_drop(item_pool: Array[Dictionary]) -> Dictionary:
 
 #### 4.2.2 人口管理与产出机制
 
-**人口分配逻辑:**
-
-```gdscript
-class PopulationManager:
-    var population := 0
-    var building_assignments: Dictionary = {}
-    
-    # NPC 工作类型与产出效率
-    var worker_efficiency := {
-        "soldier": {"output_type": "protection", "value_per_person": 10},
-        "blacksmith": {"output_type": "equipment_quality", "value_per_person": 5},
-        "alchemist": {"output_type": "item_production_speed", "value_per_person": 8}
-    }
-    
-    func assign_worker(npc_id: String, building: String):
-        if not can_assign_to_building(building):
-            return false
-        
-        # 更新分配数据
-        building_assignments[building] = (building_assignments[building] or []) + [npc_id]
-        
-        # 计算产出收益
-        calculate_buildings_output()
-
-# 建筑产出计算公式
-func calculate_buildings_output():
-    for building, workers in building_assignments:
-        var worker_count := workers.size()
-        var base_output := get_base_building_output(building)
-        
-        # 线性增长 + 边际递减 (避免后期过强)
-        var output_multiplier := 1.0 - (worker_count - 1) * 0.1
-        
-        var total_output := int(base_output * worker_count * max(0.5, output_multiplier))
-        
-        add_resource(building.output_type, total_output)
-
-```
+**核心逻辑:**
+- `PopulationManager`: 管理总人口数和建筑分配
+- `worker_efficiency`: NPC 工作类型与产出效率 (soldier/blacksmith/alchemist)
+- **产出计算公式**: `total_output = base_output × worker_count × output_multiplier`
+  - `output_multiplier = 1.0 - (worker_count - 1) × 0.1` (线性增长 + 边际递减，避免后期过强)
 
 ### 4.3 中立城镇交易机制（金币↔物资）
 
 #### 4.3.1 价格波动系统
 
 **动态定价公式:**
-
-```gdscript
-class DynamicPricing:
-    var base_prices := load_price_database()
-    var market_demand := {}  # 物品需求度 (0~1)
-    var player_reputation := 0  # -100 ~ +100
-    
-    func get_current_price(item_id: String) -> float:
-        var base_price := base_prices[item_id]
-        
-        # 市场需求影响 (±30%)
-        var demand_factor := 1.0 + (market_demand.get(item_id, 0.5) - 0.5) * 0.6
-        
-        # 玩家声望加成 (-20% ~ +20%)
-        var reputation_modifier := 1.0 + player_reputation / 500.0
-        
-        return int(base_price * demand_factor * reputation_modifier)
-
-# 市场需求动态调整 (基于 NPC 对话/事件)
-func update_market_demand(item_id: String, delta: float):
-    market_demand[item_id] = clamp(market_demand.get(item_id, 0.5) + delta, 0.0, 1.0)
-
 ```
+最终价格 = base_price × demand_factor × reputation_modifier
+
+其中:
+- demand_factor = 1.0 + (market_demand - 0.5) × 0.6  (市场需求影响，±30%)
+- reputation_modifier = 1.0 + player_reputation / 500.0  (玩家声望加成，-20% ~ +20%)
+```
+
+**市场需求动态调整:**
+- `update_market_demand(item_id, delta)`: 基于 NPC 对话/事件调整需求度 (0~1)
 
 #### 4.3.2 交易界面与交互逻辑
 
@@ -1593,46 +916,31 @@ func update_market_demand(item_id: String, delta: float):
 - 左侧：NPC 可出售物品列表 (带价格标签)
 - 右侧：玩家背包库存 (支持拖拽交易)
 - 底部：金币余额显示 + 交易确认按钮
-
-```gdscript
-class TradeInterface extends CanvasLayer:
-    var trader_npc := ""
-    var selected_item_id := ""
-    
-    func open_trade_window(npc_id: String):
-        trader_npc = npc_id
-        
-        # 加载 NPC 可交易物品
         load_trader_inventory(npc_id)
         
         # 显示价格计算结果
         update_price_display()
 
 # 交易执行函数
-func execute_transaction(transaction_type: String, item_id: String, quantity: int):
-    var price := get_current_price(item_id) * quantity
+**交易执行逻辑:**
+```
+execute_transaction(transaction_type, item_id, quantity):
+    price = get_current_price(item_id) × quantity
     
     match transaction_type:
         "buy":
-            if game.gold < price:
-                show_error("金币不足！")
-                return
-            
-            game.gold -= price
-            player_inventory.add_item(item_id, quantity)
-            
-            # 更新市场数据 (购买行为影响需求)
-            update_market_demand(item_id, -0.1)
-            
+            if game.gold < price: 金币不足 → show_error()
+            else:
+                game.gold -= price
+                player_inventory.add_item(item_id, quantity)
+                update_market_demand(item_id, -0.1)  # 购买行为影响需求
+        
         "sell":
-            if not player_inventory.has_item(item_id, quantity):
-                show_error("库存不足！")
-                return
-            
-            var sell_price := int(price * 0.8)  # 出售打八折
-            game.gold += sell_price
-            player_inventory.remove_item(item_id, quantity)
-
+            if not player_inventory.has_item(): 库存不足 → show_error()
+            else:
+                sell_price = int(price × 0.8)  # 出售打八折
+                game.gold += sell_price
+                player_inventory.remove_item(item_id, quantity)
 ```
 
 ### 4.4 经济平衡性设计（通胀控制方案）
@@ -1648,43 +956,16 @@ func execute_transaction(transaction_type: String, item_id: String, quantity: in
 #### 4.4.2 消耗机制设计
 
 **金币消耗途径:**
-
 | 消耗类型 | 触发条件 | 金额范围 | 目的 |
 |----------|----------|----------|------|
 | **建筑维护费** | 每月自动扣除 | 当前资产总值的 5% | 防止囤积金币 |
 | **装备修理费** | 装备耐久归零前 | 基础价格的 30% | 保持资源循环 |
-| ** NPC 贿赂** | 特殊任务需要 | 100-1000g 不等 | 增加策略选择 |
+| **NPC 贿赂** | 特殊任务需要 | 100-1000g 不等 | 增加策略选择 |
 | **赌桌娱乐** | 玩家主动参与 | 50-500g | 风险收益平衡 |
 
-```gdscript
-class EconomyBalance:
-    var maintenance_fee_rate := 0.05
-    
-    func collect_monthly_maintenance():
-        var total_assets := calculate_player_asset_value()
-        var fee := int(total_assets * maintenance_fee_rate)
-        
-        if game.gold >= fee:
-            game.gold -= fee
-            show_notification("已扣除本月维护费：%d 金币" % fee)
-        else:
-            # 金币不足时强制出售物品
-            force_sell_items_to_cover_fee(fee)
-
-# 动态价格保护机制
-func enforce_price_limits(item_id: String, new_price: float):
-    var min_price := get_minimum_price(item_id)
-    var max_price := get_maximum_price(item_id)
-    
-    if new_price < min_price:
-        return min_price
-    
-    if new_price > max_price:
-        return max_price
-    
-    return new_price
-
-```
+**核心逻辑:**
+- `EconomyBalance.collect_monthly_maintenance()`: 自动扣除维护费，不足时强制出售物品
+- `enforce_price_limits(item_id, new_price)`: 动态价格保护机制 (min/max 边界保护)
 
 ---
 
@@ -1697,6 +978,7 @@ func enforce_price_limits(item_id: String, new_price: float):
 
 #### 5.1.1 完整倒计时流程
 
+**流程图:**
 ```mermaid
 graph TD
     A[进入地牢] --> B[启动计时器 t=0]
@@ -1708,7 +990,6 @@ graph TD
     F -->|是 | G[最后 5 分钟倒计时显示]
     F -->|否 | H[继续探索/规划路线]
     
-    G --> I{成功抵达撤离点？}
     I -->|是 | J[安全撤离 → 结算]
     I -->|否 | K[超时惩罚触发]
     
@@ -1716,81 +997,32 @@ graph TD
     L --> M{生命值归零？}
     M -->|是 | N[强制死亡 → 重开地牢]
     M -->|否 | O[继续探索/尝试撤离]
-
-# 时间轴可视化:
-# t=0~600s (前 10 分钟): 自由探索，无警告
-# t=600~900s (最后 10 分钟): 屏幕边缘闪烁提示
-# t=900~1200s (最后 5 分钟): 倒计时显示 + 音效提醒
-# t>1200s: 超时扣血惩罚
 ```
+
+**时间轴可视化:**
+| 时间段 | 状态 | UI 提示 |
+|--------|------|--------|
+| t=0~600s (前 10 分钟) | 自由探索，无警告 | 静默运行 |
+| t=600~900s (最后 10 分钟) | 屏幕边缘闪烁提示 | Border flash |
+| t=900~1200s (最后 5 分钟) | 倒计时显示 + 音效提醒 | Timer label |
+| t>1200s | 超时扣血惩罚 | Health drain |
 
 #### 5.1.2 计时器实现代码
 
-```gdscript
-class EvacuationTimer extends Node:
-    var total_session_time := 0.0
-    var evacuation_warning_threshold := 600.0  # 10 分钟 (秒)
-    var evacuation_critical_threshold := 300.0  # 5 分钟 (秒)
-    
-    var warning_shown := false
-    var critical_alerted := false
-    
-    func _process(delta):
-        total_session_time += delta
-        
-        # 第一阶段警告：最后 10 分钟提示
-        if total_session_time >= evacuation_warning_threshold and not warning_shown:
-            show_evacuation_warning()
-            warning_shown = true
-        
-        # 第二阶段警告：最后 5 分钟倒计时 + 音效
-        if total_session_time >= evacuation_critical_threshold and not critical_alerted:
-            play_evacuation_sound_effect()
-            show_countdown_display()
-            critical_alerted = true
-    
-    func check_forced_evacuation():
-        var max_allowed_time := 1800.0  # 30 分钟上限
-        
-        if total_session_time > max_allowed_time:
-            trigger_force_evacuation()
+**核心逻辑:**
+- `total_session_time`: 累计游戏时间 (秒)
+- `evacuation_warning_threshold = 600s` (10 分钟警告)
+- `evacuation_critical_threshold = 300s` (5 分钟倒计时)
+- `max_allowed_time = 1800s` (30 分钟强制撤离上限)
 
-# 警告 UI 实现
-func show_evacuation_warning():
-    $CanvasLayer/EvacuationWarning.visible = true
-    
-    # 屏幕边缘闪烁效果
-    var border := $CanvasLayer/ScreenBorder
-    border.modulate.a = 0.5
-    
-    var flash_timer: Timer = Timer.new()
-    flash_timer.one_shot = false
-    flash_timer.timeout.connect(_on_border_flash)
-    add_child(flash_timer)
-    flash_timer.start(0.5)
+**阶段划分:**
+1. **第一阶段**: t ≥ 600s → show_evacuation_warning() (屏幕边缘闪烁)
+2. **第二阶段**: t ≥ 900s → play_evacuation_sound_effect() + show_countdown_display()
+3. **第三阶段**: remaining_time ≤ 30s → play_alarm_sound() (加速警报)
+4. **第四阶段**: remaining_time ≤ 10s → TimerLabel.modulate = Color.RED (红色警告)
 
-func _on_border_flash():
-    border.modulate.a = lerp(border.modulate.a, 0.8 if border.modulate.a < 0.6 else 0.3, 0.2)
-
-# 倒计时显示实现
-class EvacuationCountdownDisplay extends CanvasLayer:
-    var remaining_time := 300.0
-    
-    func _process(delta):
-        if active:
-            remaining_time -= delta
-            
-            # 更新倒计时文本
-            $TimerLabel.text = "撤离倒计时：%d 分钟 %d 秒" % [int(remaining_time / 60), int(fmod(remaining_time, 60))]
-            
-            # 最后 30 秒加速警报
-            if remaining_time <= 30:
-                play_alarm_sound()
-                
-                if remaining_time <= 10:
-                    $TimerLabel.modulate = Color.RED
-
-```
+**强制撤离机制:**
+- `check_forced_evacuation()`: t > 1800s 时触发强制撤离流程
 
 ### 5.2 倒计时 UI 设计
 
@@ -1806,27 +1038,47 @@ class EvacuationCountdownDisplay extends CanvasLayer:
 
 #### 5.2.2 UI 动画实现
 
-```gdscript
-class EvacuationUI:
-    var warning_banner := $CanvasLayer/EvacuationWarning
-    var countdown_label := $CanvasLayer/CountdownTimer
-    
-    func start_warning_phase():
-        # 淡入警告横幅 (1s)
-        var tween := create_tween()
-        tween.tween_property(warning_banner, "modulate:a", 0.8, 1.0)
-        
-        # 显示文字内容
-        warning_banner.text = "⚠️ 撤离倒计时即将开始！请尽快规划路线"
-    
-    func start_countdown_phase():
-        # 倒计时数字渐变动画
-        var color_tween := create_tween()
-        color_tween.tween_property(countdown_label, "modulate", Color.YELLOW, 10.0)
-        color_tween.tween_property(countdown_label, "modulate", Color.ORANGE, 60.0)
-        color_tween.tween_property(countdown_label, "modulate", Color.RED, 30.0)
+**核心逻辑:**
+- `start_warning_phase()`: 淡入警告横幅 (1s) + 显示撤离提示文字
+- `start_countdown_phase()`: 倒计时数字颜色渐变动画 (黄色→橙色→红色)
+  - Yellow @ t=900s → Orange @ t=960s → Red @ t=990s
 
+### 5.3 玩家决策点分析（继续搜刮 vs 立即撤离）
+
+#### 5.3.1 决策因素权重表
+
+| 考虑因素 | 权重 | 说明 |
+|----------|------|------|
+| **任务完成度** | 30% | 是否已收集足够材料？ |
+| **背包容量占用** | 20% | 还有多少空间可携带物资？ |
+| **周围威胁程度** | 25% | 是否有敌对生物靠近？ |
+| **撤离路线清晰度** | 15% | 路径是否被封锁或危险区域覆盖？ |
+| **剩余时间** | 10% | 倒计时紧迫性 |
+
+#### 5.3.2 决策辅助系统 (非强制提示)
+
+**风险评估逻辑:**
 ```
+calculate_risk_level():
+    risk_score = 0
+    
+    # 周围怪物数量权重 (每怪 +10 分)
+    risk_score += get_nearby_enemies(500).size() × 10
+    
+    # 任务完成度权重 (未完成越高风险越大)
+    if quest_completion < 0.5:
+        risk_score += 30  # 未完成任务撤离惩罚高
+    
+    # 背包占用率 (接近满载时风险增加)
+    if inventory_fullness > 0.8:
+        risk_score += 20
+    
+    return clamp(risk_score, 0, 100)
+```
+
+**UI 显示建议:**
+- **risk_level > 70**: "⚠️ 高威胁区域！建议立即撤离" (红色警告)
+- **40 < risk_level ≤ 70**: "⚡ 中度危险，请谨慎决策" (黄色提示)
 
 ### 5.3 玩家决策点分析（继续搜刮 vs 立即撤离）
 
