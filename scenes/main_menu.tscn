@@ -1,0 +1,36 @@
+[gd_scene load_steps=4 format=3 uid="uid://main001"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wall"]
+size = Vector2(64, 64)
+
+[node name="MainScene" type="Node2D"]
+
+[node name="PlayerSpawn" type="Position2D" parent="."]
+position = Vector2(100, 100)
+
+[node name="Walls" type="Node2D" parent="."]
+
+[node name="Wall_North" type="StaticBody2D" parent="Walls"]
+position = Vector2(400, 50)
+collision_layer = 2
+collision_mask = 1
+
+[node name="Wall_South" type="StaticBody2D" parent="Walls"]
+position = Vector2(400, 350)
+collision_layer = 2
+collision_mask = 1
+
+[node name="Wall_West" type="StaticBody2D" parent="Walls"]
+position = Vector2(50, 200)
+collision_layer = 2
+collision_mask = 1
+
+[node name="Wall_East" type="StaticBody2D" parent="Walls"]
+position = Vector2(750, 200)
+collision_layer = 2
+collision_mask = 1
+
+[node name="Obstacle" type="StaticBody2D" parent="Walls"]
+position = Vector2(400, 200)
+collision_layer = 2
+collision_mask = 1

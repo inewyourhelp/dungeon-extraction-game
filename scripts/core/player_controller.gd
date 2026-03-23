@@ -10,55 +10,55 @@ extends CharacterBody2D
 
 @export_group("🏃 移动设置")
 
-@export var move_speed: float = 160.0 \
-	"""基础移动速度 (像素/秒)"""
+@export var move_speed: float = 160.0
+## @description 基础移动速度 (像素/秒)
 
-@export var acceleration: float = 800.0 \
-	"""加速度，控制启动/停止的平滑度"""
+@export var acceleration: float = 800.0
+## @description 加速度，控制启动/停止的平滑度
 
-@export var friction: float = 800.0 \
-	"""摩擦力，减速时的衰减率"""
+@export var friction: float = 800.0
+## @description 摩擦力，减速时的衰减率
 
 @export_group("🎭 动画状态")
 
-@export var idle_animation: StringName = "idle" \
-	"""待机动画名称"""
+@export var idle_animation: StringName = "idle"
+## @description 待机动画名称
 
-@export var walking_animation: StringName = "walking" \
-	"""行走动画名称"""
+@export var walking_animation: StringName = "walking"
+## @description 行走动画名称
 
 @export_group("👁️ 调试信息")
 
-@export var debug_show_hitbox: bool = false \
-	"""是否显示碰撞箱调试视图"""
+@export var debug_show_hitbox: bool = false
+## @description 是否显示碰撞箱调试视图
 
 
 ## ============================================
 ## 私有变量
 ## ============================================
 
-var _current_animation: StringName = idle_animation \
-	"""当前播放的动画名称"""
+var _current_animation: StringName = "idle"
+## 当前播放的动画名称
 
-var _is_moving: bool = false \
-	"""是否正在移动"""
+var _is_moving: bool = false
+## 是否正在移动
 
-var _direction: Vector2 = Vector2.ZERO \
-	"""当前移动方向 (归一化)"""
+var _direction: Vector2 = Vector2.ZERO
+## 当前移动方向 (归一化)
 
 
 ## ============================================
 ## 节点引用
 ## ============================================
 
-@onready_var sprite_2d: Sprite2D = $Sprite2D \
-	"""角色精灵组件"""
+@onready var sprite_2d: Sprite2D = $Sprite2D
+## 角色精灵组件
 
-@onready_var animation_player: AnimationPlayer = $AnimationPlayer \
-	"""动画播放器组件"""
+@onready var animation_player: AnimationPlayer = $AnimationPlayer
+## 动画播放器组件
 
-@onready_var collision_shape: CollisionShape2D = $CollisionShape2D \
-	"""碰撞形状组件"""
+@onready var collision_shape: CollisionShape2D = $CollisionShape2D
+## 碰撞形状组件
 
 
 ## ============================================
@@ -68,7 +68,7 @@ var _direction: Vector2 = Vector2.ZERO \
 func _ready() -> void:
 	"""节点就绪时初始化"""
 	# 设置初始动画状态
-	if animation_player and has_node(animation_player):
+	if animation_player != null and has_node("/root/AnimationPlayer"):
 		animation_player.play(_current_animation)
 	
 	print("[🛠️ PlayerController] 玩家控制器已就绪")
@@ -86,8 +86,7 @@ func _physics_process(delta: float) -> void:
 	_update_animation_state()
 	
 	# 4. 执行移动并处理碰撞
-	if move():
-		pass  # 移动成功，无需额外操作
+	move_and_slide()
 	
 	# 5. 调试视图
 	_debug_render()
@@ -108,14 +107,14 @@ func _get_input_direction() -> Vector2:
 	
 	# WASD / 方向键
 	if Input.is_action_pressed("ui_left") or Input.is_key_pressed(KEY_A):
-		input_vector.x -= 1
+		input_vector.x -= 1.0
 	elif Input.is_action_pressed("ui_right") or Input.is_key_pressed(KEY_D):
-		input_vector.x += 1
+		input_vector.x += 1.0
 	
 	if Input.is_action_pressed("ui_up") or Input.is_key_pressed(KEY_W):
-		input_vector.y -= 1
+		input_vector.y -= 1.0
 	elif Input.is_action_pressed("ui_down") or Input.is_key_pressed(KEY_S):
-		input_vector.y += 1
+		input_vector.y += 1.0
 	
 	# 归一化：防止斜向移动速度过快
 	if input_vector.length() > 0.0:
@@ -150,7 +149,7 @@ func _update_animation_state() -> void:
 	var is_now_moving := _direction.length() > 0.5
 	
 	# 只在动画状态变化时切换 (避免频繁重播)
-	if _is_moving != is_now_moving and animation_player:
+	if _is_moving != is_now_moving and animation_player != null:
 		_is_moving = is_now_moving
 		
 		if _is_moving:
@@ -161,37 +160,13 @@ func _update_animation_state() -> void:
 			_current_animation = idle_animation
 
 
-func move() -> bool:
-	"""
-	执行移动并处理碰撞
-	
-	Returns:
-		bool: 是否成功移动 (没有遇到不可逾越的障碍)
-	"""
-	var moved := false
-	
-	# 尝试 X 轴移动
-	if velocity.x != 0.0:
-		velocity.x = velocity.x / move_speed * move_speed  # 归一化 X 速度
-		move_and_slide()
-		moved = true
-	
-	# 尝试 Y 轴移动
-	if velocity.y != 0.0:
-		velocity.y = velocity.y / move_speed * move_speed  # 归一化 Y 速度
-		move_and_slide()
-		moved = true
-	
-	return moved
-
-
 ## ============================================
 ## 调试功能
 ## ============================================
 
 func _debug_render() -> void:
 	"""显示碰撞箱调试视图 (仅开发环境)"""
-	if not debug_show_hitbox or not collision_shape:
+	if not debug_show_hitbox or collision_shape == null:
 		return
 	
 	# 在编辑器中高亮显示碰撞形状
@@ -206,14 +181,3 @@ func set_debug_mode(enabled: bool) -> void:
 	"""开启/关闭调试模式"""
 	debug_show_hitbox = enabled
 	print("[🛠️ PlayerController] 调试模式：", "ON" if enabled else "OFF")
-
-
-func get_velocity() -> Vector2:
-	"""获取当前速度向量"""
-	return velocity
-
-
-func set_speed(new_speed: float) -> void:
-	"""动态调整移动速度"""
-	move_speed = max(0.0, new_speed)
-	print("[🛠️ PlayerController] 速度调整为：", move_speed)
