@@ -1,0 +1,46 @@
+[gd_scene load_steps=12 format=3 uid="uid://test_elem_001"]
+
+[ext_resource type="Script" path="res://scripts/core/element_system/ElementType.gd" id="1_element_type"]
+[ext_resource type="Script" path="res://scripts/core/element_system/ElementAttachment.gd" id="2_attachment"]
+[ext_resource type="Script" path="res://scripts/core/element_system/ReactionTrigger.gd" id="3_trigger"]
+[ext_resource type="Script" path="res://scripts/tools/TestElementSystem.gd" id="4_test_script"]
+
+[node name="TestScene" type="Node2D"]
+script = ExtResource("4_test_script")
+
+[node name="DebugInfo" type="Label" parent="."]
+position = Vector2(10, 10)
+text = "元素附着系统测试场景\nWASD: 切换攻击者 | ↑↓←→: 切换目标 | SPACE: 触发反应检测 | ESC: 退出"
+font_size = 16
+
+[node name="ElementDisplay_A" type="Label" parent="."]
+position = Vector2(10, 50)
+text = "攻击者元素 (A/W/S/D): FIRE"
+font_size = 14
+
+[node name="ElementDisplay_B" type="Label" parent="."]
+position = Vector2(10, 80)
+text = "目标元素 (↑/↓/←/→): WATER"
+font_size = 14
+
+[node name="ReactionResult" type="Label" parent="."]
+position = Vector2(10, 110)
+text = "反应结果：-"
+font_size = 16
+modulate = Color.RED
+
+[node name="ElementAttachment_Attacker" type="ElementAttachment" parent="."]
+script = ExtResource("2_attachment")
+element_type = 1  # FIRE (ElementType.Element.FIRE)
+layer_count = 2
+max_stacks = 3
+
+[node name="ElementAttachment_Target" type="ElementAttachment" parent="."]
+script = ExtResource("2_attachment")
+element_type = 2  # WATER (ElementType.Element.WATER)
+layer_count = 1
+max_stacks = 3
+
+[node name="ReactionTrigger_System" type="Node" parent="."]
+script = ExtResource("3_trigger")
+
