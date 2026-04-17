@@ -1,0 +1,51 @@
+[gd_scene load_steps=9 format=3 uid="uid://test_combat_001"]
+
+[ext_resource type="Script" path="res://scripts/core/combat/CombatSystem.gd" id="1_combat"]
+[ext_resource type="Script" path="res://scripts/tools/TestCombatSystem.gd" id="2_test_script"]
+[ext_resource type="Script" path="res://scripts/core/element_system/ElementType.gd" id="3_element_type"]
+[ext_resource type="Script" path="res://scripts/core/element_system/ElementAttachment.gd" id="4_attachment"]
+
+[node name="TestCombatScene" type="Node2D"]
+script = ExtResource("2_test_script")
+
+[node name="DebugInfo" type="Label" parent="."]
+position = Vector2(10, 10)
+text = "战斗系统测试场景\n按 F5 运行自动验证"
+font_size = 16
+
+[node name="EvaporationResult" type="Label" parent="."]
+position = Vector2(10, 50)
+text = "蒸发伤害 (火→水): -"
+font_size = 14
+modulate = Color.RED
+
+[node name="MeltResult" type="Label" parent="."]
+position = Vector2(10, 80)
+text = "融化伤害 (水→火): -"
+font_size = 14
+modulate = Color.BLUE
+
+[node name="TestTarget" type="Node2D" parent="."]
+name = "TestTarget"
+
+[node name="ElementAttachment_Target" type="ElementAttachment" parent="TestTarget"]
+script = ExtResource("3_attachment")
+element_type = 2  # WATER (ElementType.Element.WATER)
+layer_count = 1
+max_stacks = 3
+
+
+## ============================================
+## 测试脚本逻辑 (运行时注入)
+## ============================================
+
+# 此场景用于自动验证 CombatSystem 功能
+# 
+# 使用方法:
+# 1. 在 Godot Editor 中打开此场景
+# 2. 按 F5 运行测试
+# 3. 查看控制台输出和 UI 显示结果
+# 
+# 预期结果:
+# - 蒸发伤害验证：×2.0x ✅
+# - 融化伤害验证：×1.5x ✅

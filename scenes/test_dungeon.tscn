@@ -1,0 +1,43 @@
+[gd_scene load_steps=4 format=3 uid="uid://dvp002"]
+
+[ext_resource type="Script" path="res://scripts/core/collision_system.gd" id="1_collision"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wall"]
+size = Vector2(64, 64)
+
+[node name="TestDungeon" type="Node2D"]
+
+[node name="CollisionSystem" type="Node2D" parent="."]
+script = ExtResource("1_collision")
+
+[node name="PlayerSpawn" type="Position2D" parent="."]
+position = Vector2(100, 100)
+
+[node name="Walls" type="Node2D" parent="."]
+
+[node name="Wall_North" type="StaticBody2D" parent="Walls"]
+position = Vector2(400, 50)
+collision_layer = 2
+collision_mask = 1
+
+[node name="Wall_South" type="StaticBody2D" parent="Walls"]
+position = Vector2(400, 350)
+collision_layer = 2
+collision_mask = 1
+
+[node name="Wall_West" type="StaticBody2D" parent="Walls"]
+position = Vector2(50, 200)
+collision_layer = 2
+collision_mask = 1
+
+[node name="Wall_East" type="StaticBody2D" parent="Walls"]
+position = Vector2(750, 200)
+collision_layer = 2
+collision_mask = 1
+
+[node name="Obstacle" type="StaticBody2D" parent="Walls"]
+position = Vector2(400, 200)
+collision_layer = 2
+collision_mask = 1
+
+[connection signal="ready" from="." to="." method="_on_ready()"]

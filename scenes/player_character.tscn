@@ -1,0 +1,27 @@
+[gd_scene load_steps=6 format=3 uid="uid://dvp001"]
+
+[ext_resource type="Script" path="res://scripts/core/player_controller.gd" id="1_player"]
+[ext_resource type="Texture2D" path="res://assets/sprites/hero_idle.png" id="2_hero"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_player_hitbox"]
+size = Vector2(32, 48)
+
+[sub_resource type="AnimationPlayer" id="AnimationPlayer_player_animations"]
+animations = {
+	"idle": AnimTrack(uid="uid://dvp001", name="idle"),
+	"walking": AnimTrack(uid="uid://dvp001", name="walking")
+}
+
+[node name="PlayerCharacter" type="CharacterBody2D"]
+script = ExtResource("1_player")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("2_hero")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_player_hitbox")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+script = Subresource("AnimationPlayer_player_animations")
+
+[connection signal="ready" from="." to="." method="_on_ready()"]
